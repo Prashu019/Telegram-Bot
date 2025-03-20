@@ -2,7 +2,7 @@ import os
 import logging
 import yt_dlp
 import re
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # ✅ Logging Setup
@@ -15,43 +15,37 @@ logger = logging.getLogger(__name__)
 if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
-# ✅ Function to ask user which platform they want
-async def ask_platform(update: Update, context: CallbackContext):
-    keyboard = [["YouTube", "Facebook"], ["Instagram", "Twitter"], ["TikTok"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("📌 Choose the platform:", reply_markup=reply_markup)
-
 # ✅ Start Command
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("👋 Welcome to MediaFetchBot!\nPaste a public video URL to download.")
-    await ask_platform(update, context)
 
 # ✅ Download Function
 async def download_media(url, chat_id, context):
     options = {  
         'outtmpl': 'downloads/%(title)s.%(ext)s',  # Save in 'downloads' folder
         'noplaylist': True,
+        'merge_output_format': None,  # Disable merging
         'restrictfilenames': True,  # ✅ Prevents special characters in filenames
     }
 
-    # Detect Platform
+    # Detect Platform and Set Options
     if "youtube.com" in url or "youtu.be" in url:
-        platform = "YouTube"
         options["format"] = "bestvideo[ext=mp4]/best[ext=mp4]/best"
-        options["cookiefile"] = "youtube_cookies.txt"  # ✅ Use YouTube cookies for authentication
+        options["cookiefile"] = "youtube_cookies.txt"  # ✅ Use YouTube cookies
+
     elif "facebook.com" in url:
-        platform = "Facebook"
         options["format"] = "best[ext=mp4]/best"
-        options["cookiefile"] = "facebook_cookies.txt"  # ✅ Use Facebook cookies for authentication
+        options["cookiefile"] = "facebook_cookies.txt"  # ✅ Use Facebook cookies
+
     elif "instagram.com" in url:
-        platform = "Instagram"
         options["format"] = "best[ext=mp4]/best"
+
     elif "twitter.com" in url or "x.com" in url:
-        platform = "Twitter"
         options["format"] = "best[ext=mp4]/best"
+
     elif "tiktok.com" in url:
-        platform = "TikTok"
         options["format"] = "best[ext=mp4]/best"
+
     else:
         await context.bot.send_message(chat_id=chat_id, text="❌ Unsupported platform! Please send a valid URL.")
         return
@@ -79,9 +73,7 @@ async def download_media(url, chat_id, context):
                 # ✅ Cleanup after sending
                 os.remove(safe_filepath)
 
-                # ✅ Ask for another download
-                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Want to download another video?")
-                await ask_platform(update=Update(chat_id, {}), context=context)
+                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Paste another video URL to download.")
 
             else:
                 await context.bot.send_message(chat_id=chat_id, text="❌ Error: File not found!")
@@ -100,10 +92,10 @@ async def handle_message(update: Update, context: CallbackContext):
 
 # ✅ Main Function
 def main():
-    TOKEN = os.getenv("BOT_TOKEN")  # ⬅️ Load from environment variable
+    TOKEN = os.getenv("BOT_TOKEN")  # ⬅️ Ensure BOT_TOKEN is set in Railway
 
     if not TOKEN:
-        print("❌ BOT_TOKEN not found! Set it in Railway Environment Variables.")
+        print("❌ ERROR: BOT_TOKEN is missing!")
         return
 
     app = Application.builder().token(TOKEN).build()
