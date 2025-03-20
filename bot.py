@@ -4,11 +4,6 @@ import yt_dlp
 import re
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from dotenv import load_dotenv
-
-# ✅ Load environment variables
-load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
 
 # ✅ Logging Setup
 logging.basicConfig(
@@ -24,11 +19,11 @@ if not os.path.exists("downloads"):
 async def ask_platform(update: Update, context: CallbackContext):
     keyboard = [["YouTube", "Facebook"], ["Instagram", "Twitter"], ["TikTok"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("\U0001F4CC Choose the platform:", reply_markup=reply_markup)
+    await update.message.reply_text("📌 Choose the platform:", reply_markup=reply_markup)
 
 # ✅ Start Command
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("\U0001F44B Welcome to MediaFetchBot!\nPaste a public video URL to download.")
+    await update.message.reply_text("👋 Welcome to MediaFetchBot!\nPaste a public video URL to download.")
     await ask_platform(update, context)
 
 # ✅ Download Function
@@ -40,14 +35,14 @@ async def download_media(url, chat_id, context):
     }
 
     # Detect Platform
-    platform = None
     if "youtube.com" in url or "youtu.be" in url:
         platform = "YouTube"
         options["format"] = "bestvideo[ext=mp4]/best[ext=mp4]/best"
+        options["cookiefile"] = "youtube_cookies.txt"  # ✅ Use YouTube cookies for authentication
     elif "facebook.com" in url:
         platform = "Facebook"
         options["format"] = "best[ext=mp4]/best"
-        options["cookiefile"] = "all_cookies.txt"
+        options["cookiefile"] = "facebook_cookies.txt"  # ✅ Use Facebook cookies for authentication
     elif "instagram.com" in url:
         platform = "Instagram"
         options["format"] = "best[ext=mp4]/best"
@@ -60,37 +55,40 @@ async def download_media(url, chat_id, context):
     else:
         await context.bot.send_message(chat_id=chat_id, text="❌ Unsupported platform! Please send a valid URL.")
         return
-    
-    await context.bot.send_message(chat_id=chat_id, text=f"📡 Fetching {platform} media...")
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
 
-            # ✅ Sanitize filename
+            # ✅ Sanitize filename (remove special characters)
             safe_filename = re.sub(r'[<>:"/\\|?*]', '', os.path.basename(file_path))
             safe_filepath = os.path.join("downloads", safe_filename)
 
+            # ✅ Rename file if needed
             if file_path != safe_filepath:
                 os.rename(file_path, safe_filepath)
 
+            # ✅ Send the downloaded file
             if os.path.exists(safe_filepath):
-                file_size = os.path.getsize(safe_filepath) / (1024 * 1024)  # MB
-                if file_size > 50:
-                    await context.bot.send_document(chat_id=chat_id, document=open(safe_filepath, "rb"))
-                else:
+                if safe_filepath.endswith((".mp4", ".mkv", ".webm")):
                     await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
+                elif safe_filepath.endswith((".jpg", ".jpeg", ".png")):
+                    await context.bot.send_photo(chat_id=chat_id, photo=open(safe_filepath, "rb"))
+
+                # ✅ Cleanup after sending
                 os.remove(safe_filepath)
-                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed!")
+
+                # ✅ Ask for another download
+                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Want to download another video?")
+                await ask_platform(update=Update(chat_id, {}), context=context)
+
             else:
                 await context.bot.send_message(chat_id=chat_id, text="❌ Error: File not found!")
 
     except yt_dlp.DownloadError as e:
-        logger.error(str(e))
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Download Error: {str(e)}")
     except Exception as e:
-        logger.error(str(e))
         await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Unexpected Error: {str(e)}")
 
 # ✅ Handle User Messages (URL Input)
@@ -102,10 +100,12 @@ async def handle_message(update: Update, context: CallbackContext):
 
 # ✅ Main Function
 def main():
+    TOKEN = os.getenv("BOT_TOKEN")  # ⬅️ Load from environment variable
+
     if not TOKEN:
-        logger.error("BOT_TOKEN is missing in environment variables!")
+        print("❌ BOT_TOKEN not found! Set it in Railway Environment Variables.")
         return
-    
+
     app = Application.builder().token(TOKEN).build()
 
     # ✅ Command Handlers
