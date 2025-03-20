@@ -6,9 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # ✅ Logging Setup
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ✅ Ensure 'downloads' directory exists
@@ -22,33 +20,18 @@ async def start(update: Update, context: CallbackContext):
 # ✅ Download Function
 async def download_media(url, chat_id, context):
     options = {  
-        'outtmpl': 'downloads/%(title)s.%(ext)s',  # Save in 'downloads' folder
+        'outtmpl': 'downloads/%(title)s.%(ext)s',  
         'noplaylist': True,
-        'merge_output_format': None,  # Disable merging
-        'restrictfilenames': True,  # ✅ Prevents special characters in filenames
+        'merge_output_format': 'mp4',  # ✅ Merge video + audio
+        'restrictfilenames': True,
+        'format': 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]',  # ✅ Best video + audio
     }
 
-    # Detect Platform and Set Options
+    # ✅ Detect platform and apply necessary cookies
     if "youtube.com" in url or "youtu.be" in url:
-        options["format"] = "bestvideo[ext=mp4]/best[ext=mp4]/best"
-        options["cookiefile"] = "youtube_cookies.txt"  # ✅ Use YouTube cookies
-
+        options["cookiefile"] = "youtube_cookies.txt"  # ✅ YouTube cookies
     elif "facebook.com" in url:
-        options["format"] = "best[ext=mp4]/best"
-        options["cookiefile"] = "facebook_cookies.txt"  # ✅ Use Facebook cookies
-
-    elif "instagram.com" in url:
-        options["format"] = "best[ext=mp4]/best"
-
-    elif "twitter.com" in url or "x.com" in url:
-        options["format"] = "best[ext=mp4]/best"
-
-    elif "tiktok.com" in url:
-        options["format"] = "best[ext=mp4]/best"
-
-    else:
-        await context.bot.send_message(chat_id=chat_id, text="❌ Unsupported platform! Please send a valid URL.")
-        return
+        options["cookiefile"] = "facebook_cookies.txt"  # ✅ Facebook cookies
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -59,7 +42,6 @@ async def download_media(url, chat_id, context):
             safe_filename = re.sub(r'[<>:"/\\|?*]', '', os.path.basename(file_path))
             safe_filepath = os.path.join("downloads", safe_filename)
 
-            # ✅ Rename file if needed
             if file_path != safe_filepath:
                 os.rename(file_path, safe_filepath)
 
@@ -70,11 +52,9 @@ async def download_media(url, chat_id, context):
                 elif safe_filepath.endswith((".jpg", ".jpeg", ".png")):
                     await context.bot.send_photo(chat_id=chat_id, photo=open(safe_filepath, "rb"))
 
-                # ✅ Cleanup after sending
-                os.remove(safe_filepath)
+                os.remove(safe_filepath)  # ✅ Cleanup after sending
 
-                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Paste another video URL to download.")
-
+                await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Send another link.")
             else:
                 await context.bot.send_message(chat_id=chat_id, text="❌ Error: File not found!")
 
@@ -92,11 +72,7 @@ async def handle_message(update: Update, context: CallbackContext):
 
 # ✅ Main Function
 def main():
-    TOKEN = os.getenv("BOT_TOKEN")  # ⬅️ Ensure BOT_TOKEN is set in Railway
-
-    if not TOKEN:
-        print("❌ ERROR: BOT_TOKEN is missing!")
-        return
+    TOKEN = os.getenv("BOT_TOKEN")  # ⬅️ Load token from environment variable
 
     app = Application.builder().token(TOKEN).build()
 
