@@ -4,7 +4,7 @@ import os
 import yt_dlp
 import logging
 from telegram import Update
-from telegram.ext import Application, CallbackContext, ConversationHandler, CommandHandler
+from telegram.ext import Application, CallbackContext, ConversationHandler, CommandHandler, MessageHandler, Filters
 
 # Set up logging
 logging.basicConfig(
@@ -16,27 +16,37 @@ logger = logging.getLogger(__name__)
 # Use environment variable for BOT_TOKEN (set in Railway)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Assuming user_choices is a global dictionary defined elsewhere
+# Assuming user_choices is a global dictionary
 user_choices = {}
 
 async def start(update: Update, context: CallbackContext):
-    """Simple start command to verify the bot is responsive."""
-    logger.info(f"Received /start command from chat_id: {update.message.chat_id}")
+    """Handle /start command."""
+    chat_id = update.message.chat_id
+    logger.info(f"Received /start command from chat_id: {chat_id}")
     await update.message.reply_text("Hello! I'm your download bot. Use /download <url> to start.")
+    return ConversationHandler.END
+
+async def echo(update: Update, context: CallbackContext):
+    """Echo all messages for debugging."""
+    chat_id = update.message.chat_id
+    text = update.message.text
+    logger.info(f"Echo: Received message '{text}' from chat_id: {chat_id}")
+    await update.message.reply_text(f"Echo: You sent '{text}'")
     return ConversationHandler.END
 
 async def download_media(update: Update, context: CallbackContext):
     """Downloads media from a URL provided by the user."""
     chat_id = update.message.chat_id
-    logger.info(f"Received message in download_media: {update.message.text} from chat_id: {chat_id}")
+    text = update.message.text
+    logger.info(f"Received message in download_media: '{text}' from chat_id: {chat_id}")
 
-    # For testing, assume the URL is in the message text (e.g., "/download <url>")
-    url = update.message.text.split(maxsplit=1)[1] if len(update.message.text.split()) > 1 else None
-    quality = "Medium"  # Default quality for testing; adjust as needed
+    # Extract URL from command (e.g., "/download <url>")
+    url = text.split(maxsplit=1)[1] if len(text.split()) > 1 else None
+    quality = "Medium"  # Default for testing
 
     if not url:
         logger.warning(f"No URL provided by chat_id: {chat_id}")
-        await update.message.reply_text("❌ Error: URL not found. Please send a valid link with /download <url>.")
+        await update.message.reply_text("❌ Error: URL not found. Please send /download <url>.")
         return ConversationHandler.END
 
     logger.info(f"Processing URL: {url} for chat_id: {chat_id}")
@@ -148,8 +158,11 @@ if __name__ == "__main__":
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("download", download_media))
+    application.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))  # Catch all non-command text
 
-    # Run the bot
+    # Log bot startup
     logger.info("Bot is starting...")
-    print("Bot is running...")  # Kept for Railway logs
-    application.run_polling()
+    print("Bot is running...")  # For Railway logs
+
+    # Run with explicit polling options
+    application.run_polling(poll_interval=1.0, timeout=10)
