@@ -115,7 +115,7 @@ if __name__ == "__main__":
     import asyncio
 
     # Replace 'YOUR_TOKEN' with your actual Telegram bot token
-    TOKEN = "YOUR_TOKEN"
+    TOKEN = "BOT_TOKEN"
 
     # Create the Application
     application = Application.builder().token(TOKEN).build()
