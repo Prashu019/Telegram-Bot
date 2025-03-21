@@ -41,53 +41,39 @@ async def download_media(update: Update, context: CallbackContext):
         "Low": "bestvideo[height<=480]+bestaudio/best"
     }
 
-    options = {  
-        'outtmpl': 'downloads/%(title)s.%(ext)s',  
+    options = {
+        'outtmpl': 'downloads/%(title)s.%(ext)s',
         'noplaylist': True,
         'merge_output_format': 'mp4',
         'restrictfilenames': True,
+        'format': quality_formats.get(quality, "best"),  # Default to "best" if quality invalid
     }
 
-    if "youtube.com" in url or "youtu.be" in url:
-        options["cookiefile"] = "youtube_cookies.txt"
-
-    elif "facebook.com" in url:
-        options["cookiefile"] = "facebook_cookies.txt"
+    # Add cookie file if applicable and exists
+    cookie_files = {
+        "youtube.com": "youtube_cookies.txt",
+        "youtu.be": "youtube_cookies.txt",
+        "facebook.com": "facebook_cookies.txt"
+    }
+    for domain, cookie_file in cookie_files.items():
+        if domain in url and os.path.exists(cookie_file):
+            options["cookiefile"] = cookie_file
+            break
 
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)  # Get available formats
-        
-        available_formats = [f['format_id'] for f in info['formats']]
-        
-        selected_format = None
-        for fmt in quality_formats[quality].split('/'):
-            if fmt in available_formats:
-                selected_format = fmt
-                break
-
-        if not selected_format:
-            await update.message.reply_text("⚠️ Selected quality is not available. Downloading best available format.")
-            selected_format = "best"
-
-        options["format"] = selected_format
-
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
 
-            safe_filename = re.sub(r'[<>:"/\\|?*]', '', os.path.basename(file_path))
-            safe_filepath = os.path.join("downloads", safe_filename)
-
-            if file_path != safe_filepath:
-                os.rename(file_path, safe_filepath)
-
-            if os.path.exists(safe_filepath):
+        safe_filepath = os.path.join("downloads", os.path.basename(file_path))
+        if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:  # 50MB limit
+            await update.message.reply_text("⚠️ File too large for Telegram (>50MB)!")
+        else:
+            try:
                 await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-                os.remove(safe_filepath)
                 await update.message.reply_text("✅ Download completed! Send another link.")
-            else:
-                await update.message.reply_text("❌ Error: File not found!")
+            finally:
+                os.remove(safe_filepath)
 
     except yt_dlp.DownloadError as e:
         await update.message.reply_text(f"❌ Download Error: {str(e)}")
