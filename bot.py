@@ -1,69 +1,78 @@
+import os
+import logging
+import yt_dlp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, CallbackContext
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("❌ ERROR: TELEGRAM_BOT_TOKEN is not set!")
+
+DOWNLOAD_PATH = "/tmp"  # For Railway
+
+async def start(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("📹 YouTube", callback_data="youtube")],
+        [InlineKeyboardButton("📘 Facebook", callback_data="facebook")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("📥 Choose the platform:", reply_markup=reply_markup)
+
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    platform = query.data
+    context.user_data["platform"] = platform
+    await query.message.reply_text(f"✅ You selected *{platform.capitalize()}*.\nNow send me the video link.", parse_mode="Markdown")
+
 async def download_media(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    quality = update.message.text
-    url = user_choices.get(chat_id, {}).get("url")
+    url = update.message.text.strip()
+    platform = context.user_data.get("platform")
 
-    if not url:
-        await update.message.reply_text("❌ Error: URL not found. Please send a valid link.")
-        return ConversationHandler.END
+    if not platform:
+        await update.message.reply_text("❌ Please select a platform first using /start")
+        return
 
-    quality_formats = {
-        "High": "bestvideo[height<=1080]+bestaudio/best",
-        "Medium": "bestvideo[height<=720]+bestaudio/best",
-        "Low": "bestvideo[height<=480]+bestaudio/best"
-    }
+    await update.message.reply_text(f"📥 Downloading from *{platform.capitalize()}*...\nPlease wait.", parse_mode="Markdown")
 
-    options = {  
-        'outtmpl': 'downloads/%(title)s.%(ext)s',  
-        'noplaylist': True,
+    options = {
+        'outtmpl': f"{DOWNLOAD_PATH}/%(id)s.%(ext)s",  # FIX: Shorter filename
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
         'merge_output_format': 'mp4',
-        'restrictfilenames': True,
+        'noplaylist': True,
+        'quiet': True
     }
-
-    if "youtube.com" in url or "youtu.be" in url:
-        options["cookiefile"] = "youtube_cookies.txt"
-
-    elif "facebook.com" in url:
-        options["cookiefile"] = "facebook_cookies.txt"
 
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)  # Get available formats
-        
-        available_formats = [f['format_id'] for f in info['formats']]
-        
-        selected_format = None
-        for fmt in quality_formats[quality].split('/'):
-            if fmt in available_formats:
-                selected_format = fmt
-                break
-
-        if not selected_format:
-            await update.message.reply_text("⚠️ Selected quality is not available. Downloading best available format.")
-            selected_format = "best"
-
-        options["format"] = selected_format
-
         with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
+            info_dict = ydl.extract_info(url, download=True)
+            video_path = ydl.prepare_filename(info_dict)
 
-            safe_filename = re.sub(r'[<>:"/\\|?*]', '', os.path.basename(file_path))
-            safe_filepath = os.path.join("downloads", safe_filename)
+        await update.message.reply_text("✅ Download complete! Uploading video...")
 
-            if file_path != safe_filepath:
-                os.rename(file_path, safe_filepath)
+        with open(video_path, "rb") as video:
+            await update.message.reply_video(video)
 
-            if os.path.exists(safe_filepath):
-                await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-                os.remove(safe_filepath)
-                await update.message.reply_text("✅ Download completed! Send another link.")
-            else:
-                await update.message.reply_text("❌ Error: File not found!")
+        os.remove(video_path)
 
-    except yt_dlp.DownloadError as e:
-        await update.message.reply_text(f"❌ Download Error: {str(e)}")
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Unexpected Error: {str(e)}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Download Error: {e}")
 
-    return ConversationHandler.END
+    await update.message.reply_text("🔄 Do you want to download another video? Use /start")
+
+def main():
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_media))
+
+    logger.info("🚀 Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
