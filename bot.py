@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 import os
 import yt_dlp
 from telegram import Update  # Import Update class
-from telegram.ext import Application, CallbackContext, ConversationHandler  # Import required classes
+from telegram.ext import Application, CallbackContext, ConversationHandler, CommandHandler  # Import all required classes
 
 # Assuming user_choices is a global dictionary defined elsewhere
 user_choices = {}  # Replace with your actual implementation if different
@@ -120,15 +120,14 @@ if __name__ == "__main__":
     # Create the Application
     application = Application.builder().token(TOKEN).build()
 
-    # For testing purposes, you might want to add a basic handler
-    # Normally, this would be part of a larger ConversationHandler setup
+    # For testing purposes, add a basic handler
     async def test_handler(update: Update, context: CallbackContext):
+        # Simulate storing the URL; in a real bot, this would be part of a conversation
         user_choices[update.message.chat_id] = {"url": update.message.text}
         await download_media(update, context)
 
-    application.add_handler(
-        telegram.ext.CommandHandler("download", test_handler)
-    )
+    # Add the CommandHandler correctly
+    application.add_handler(CommandHandler("download", test_handler))
 
     # Run the bot
     print("Bot is running...")
