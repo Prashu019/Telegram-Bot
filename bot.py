@@ -1,47 +1,60 @@
-import os
-import logging
-import yt_dlp
 import re
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from urllib.parse import urlparse
+import os
+import yt_dlp
+from telegram.ext import ConversationHandler
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-if not os.path.exists("downloads"):
-    os.makedirs("downloads")
-
-QUALITY_SELECTION = 1
-user_choices = {}
-
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Welcome to MediaFetchBot! Paste a public video URL to download.")
-
-async def ask_quality(update: Update, context: CallbackContext):
-    url = update.message.text
-    chat_id = update.message.chat_id
-    user_choices[chat_id] = {"url": url}
-    keyboard = [["High", "Medium", "Low"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Choose the video quality:", reply_markup=reply_markup)
-    return QUALITY_SELECTION
+# Assuming user_choices is a global dictionary defined elsewhere
+user_choices = {}  # Replace with your actual implementation if different
 
 async def download_media(update: Update, context: CallbackContext):
+    """
+    Downloads media from a URL provided by the user and sends it via Telegram.
+    Validates the URL before proceeding with the download.
+    """
     chat_id = update.message.chat_id
     quality = update.message.text
     url = user_choices.get(chat_id, {}).get("url")
 
+    # Step 1: Check if URL exists
     if not url:
         await update.message.reply_text("❌ Error: URL not found. Please send a valid link.")
         return ConversationHandler.END
 
+    # Step 2: Validate URL format
+    url_pattern = re.compile(r'^https?://[^\s/$.?#].[^\s]*$')
+    if not url_pattern.match(url):
+        await update.message.reply_text("❌ Error: Invalid URL format. Please send a valid link (e.g., https://example.com).")
+        return ConversationHandler.END
+
+    # Step 3: Check if URL is from a supported platform (optional)
+    supported_domains = ["youtube.com", "youtu.be", "facebook.com"]
+    parsed_url = urlparse(url)
+    if not any(domain in parsed_url.netloc for domain in supported_domains):
+        await update.message.reply_text(
+            "⚠️ Warning: URL is not from a supported platform (YouTube or Facebook). Trying anyway..."
+        )
+
+    # Step 4: Verify URL is valid for yt-dlp
+    validate_options = {
+        'quiet': True,  # Suppress output for this initial check
+        'simulate': True,  # Don’t download, just extract info
+    }
+    try:
+        with yt_dlp.YoutubeDL(validate_options) as ydl:
+            ydl.extract_info(url, download=False)  # Test if URL is valid
+    except yt_dlp.DownloadError as e:
+        await update.message.reply_text(f"❌ Error: Invalid or unsupported URL: {str(e)}")
+        return ConversationHandler.END
+
+    # Step 5: Configure download options
     quality_formats = {
         "High": "bestvideo[height<=1080]+bestaudio/best",
         "Medium": "bestvideo[height<=720]+bestaudio/best",
         "Low": "bestvideo[height<=480]+bestaudio/best"
     }
 
-    options = {
+    download_options = {
         'outtmpl': 'downloads/%(title)s.%(ext)s',
         'noplaylist': True,
         'merge_output_format': 'mp4',
@@ -49,12 +62,18 @@ async def download_media(update: Update, context: CallbackContext):
         'format': quality_formats.get(quality, "best"),
     }
 
-    # Handle YouTube cookies
-    if "youtube.com" in url or "youtu.be" in url:
-        cookie_file = "youtube_cookies.txt"
-        if os.path.exists(cookie_file):
-            options["cookiefile"] = cookie_file
-        else:
+    # Step 6: Handle cookies for YouTube or Facebook
+    cookie_files = {
+        "youtube.com": "youtube_cookies.txt",
+        "youtu.be": "youtube_cookies.txt",
+        "facebook.com": "facebook_cookies.txt"
+    }
+    for domain, cookie_file in cookie_files.items():
+        if domain in parsed_url.netloc and os.path.exists(cookie_file):
+            download_options["cookiefile"] = cookie_file
+            break
+    else:  # If no cookie file is found for YouTube
+        if "youtube.com" in parsed_url.netloc or "youtu.be" in parsed_url.netloc:
             await update.message.reply_text(
                 "⚠️ YouTube requires authentication, but no cookie file found. "
                 "Please provide cookies via youtube_cookies.txt. See: "
@@ -62,12 +81,20 @@ async def download_media(update: Update, context: CallbackContext):
             )
             return ConversationHandler.END
 
+    # Step 7: Perform the download
     try:
-        with yt_dlp.YoutubeDL(options) as ydl:
+        with yt_dlp.YoutubeDL(download_options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
 
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
+        # Optional: Check file size (Telegram limit: 50MB for bots)
+        if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:
+            await update.message.reply_text("⚠️ File too large for Telegram (>50MB)!")
+            if os.path.exists(safe_filepath):
+                os.remove(safe_filepath)
+            return ConversationHandler.END
+
         try:
             await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
             await update.message.reply_text("✅ Download completed! Send another link.")
@@ -82,18 +109,8 @@ async def download_media(update: Update, context: CallbackContext):
 
     return ConversationHandler.END
 
-def main():
-    TOKEN = os.getenv("BOT_TOKEN")
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, ask_quality)],
-        states={QUALITY_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_media)]},
-        fallbacks=[],
-    )
-    app.add_handler(conv_handler)
-    print("Bot is running...")
-    app.run_polling()
-
 if __name__ == "__main__":
-    main()
+    from telegram.ext import Application
+    application = Application.builder().token('BOT_TOKEN').build()
+
+    application.run_polling()
