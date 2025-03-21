@@ -46,19 +46,21 @@ async def download_media(update: Update, context: CallbackContext):
         'noplaylist': True,
         'merge_output_format': 'mp4',
         'restrictfilenames': True,
-        'format': quality_formats.get(quality, "best"),  # Default to "best" if quality invalid
+        'format': quality_formats.get(quality, "best"),
     }
 
-    # Add cookie file if applicable and exists
-    cookie_files = {
-        "youtube.com": "youtube_cookies.txt",
-        "youtu.be": "youtube_cookies.txt",
-        "facebook.com": "facebook_cookies.txt"
-    }
-    for domain, cookie_file in cookie_files.items():
-        if domain in url and os.path.exists(cookie_file):
+    # Handle YouTube cookies
+    if "youtube.com" in url or "youtu.be" in url:
+        cookie_file = "youtube_cookies.txt"
+        if os.path.exists(cookie_file):
             options["cookiefile"] = cookie_file
-            break
+        else:
+            await update.message.reply_text(
+                "⚠️ YouTube requires authentication, but no cookie file found. "
+                "Please provide cookies via youtube_cookies.txt. See: "
+                "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
+            )
+            return ConversationHandler.END
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
@@ -66,13 +68,11 @@ async def download_media(update: Update, context: CallbackContext):
             file_path = ydl.prepare_filename(info)
 
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
-        if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:  # 50MB limit
-            await update.message.reply_text("⚠️ File too large for Telegram (>50MB)!")
-        else:
-            try:
-                await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-                await update.message.reply_text("✅ Download completed! Send another link.")
-            finally:
+        try:
+            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
+            await update.message.reply_text("✅ Download completed! Send another link.")
+        finally:
+            if os.path.exists(safe_filepath):
                 os.remove(safe_filepath)
 
     except yt_dlp.DownloadError as e:
@@ -81,7 +81,6 @@ async def download_media(update: Update, context: CallbackContext):
         await update.message.reply_text(f"⚠️ Unexpected Error: {str(e)}")
 
     return ConversationHandler.END
-
 
 def main():
     TOKEN = os.getenv("BOT_TOKEN")
