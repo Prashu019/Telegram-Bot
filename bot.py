@@ -2,7 +2,8 @@ import re
 from urllib.parse import urlparse
 import os
 import yt_dlp
-from telegram.ext import ConversationHandler
+from telegram import Update  # Import Update class
+from telegram.ext import Application, CallbackContext, ConversationHandler  # Import required classes
 
 # Assuming user_choices is a global dictionary defined elsewhere
 user_choices = {}  # Replace with your actual implementation if different
@@ -110,7 +111,25 @@ async def download_media(update: Update, context: CallbackContext):
     return ConversationHandler.END
 
 if __name__ == "__main__":
-    from telegram.ext import Application
-    application = Application.builder().token('BOT_TOKEN').build()
+    # Example bot setup for testing
+    import asyncio
 
+    # Replace 'YOUR_TOKEN' with your actual Telegram bot token
+    TOKEN = "YOUR_TOKEN"
+
+    # Create the Application
+    application = Application.builder().token(TOKEN).build()
+
+    # For testing purposes, you might want to add a basic handler
+    # Normally, this would be part of a larger ConversationHandler setup
+    async def test_handler(update: Update, context: CallbackContext):
+        user_choices[update.message.chat_id] = {"url": update.message.text}
+        await download_media(update, context)
+
+    application.add_handler(
+        telegram.ext.CommandHandler("download", test_handler)
+    )
+
+    # Run the bot
+    print("Bot is running...")
     application.run_polling()
