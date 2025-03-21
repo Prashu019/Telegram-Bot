@@ -32,13 +32,13 @@ async def download_media(update: Update, context: CallbackContext):
     url = user_choices.get(chat_id, {}).get("url")
 
     if not url:
-        await update.message.reply_text("Error: URL not found. Please send a valid link.")
+        await update.message.reply_text("❌ Error: URL not found. Please send a valid link.")
         return ConversationHandler.END
 
     quality_formats = {
-        "High": "bestvideo+bestaudio/best",
-        "Medium": "bv[height<=720]+ba/best[height<=720]",
-        "Low": "bv[height<=480]+ba/best[height<=480]"
+        "High": "bestvideo[height<=1080]+bestaudio/best",
+        "Medium": "bestvideo[height<=720]+bestaudio/best",
+        "Low": "bestvideo[height<=480]+bestaudio/best"
     }
 
     options = {  
@@ -46,36 +46,56 @@ async def download_media(update: Update, context: CallbackContext):
         'noplaylist': True,
         'merge_output_format': 'mp4',
         'restrictfilenames': True,
-        'format': quality_formats.get(quality, "best"),
     }
 
     if "youtube.com" in url or "youtu.be" in url:
         options["cookiefile"] = "youtube_cookies.txt"
+
     elif "facebook.com" in url:
         options["cookiefile"] = "facebook_cookies.txt"
 
     try:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)  # Get available formats
+        
+        available_formats = [f['format_id'] for f in info['formats']]
+        
+        selected_format = None
+        for fmt in quality_formats[quality].split('/'):
+            if fmt in available_formats:
+                selected_format = fmt
+                break
+
+        if not selected_format:
+            await update.message.reply_text("⚠️ Selected quality is not available. Downloading best available format.")
+            selected_format = "best"
+
+        options["format"] = selected_format
+
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
+
             safe_filename = re.sub(r'[<>:"/\\|?*]', '', os.path.basename(file_path))
             safe_filepath = os.path.join("downloads", safe_filename)
+
             if file_path != safe_filepath:
                 os.rename(file_path, safe_filepath)
+
             if os.path.exists(safe_filepath):
-                if safe_filepath.endswith((".mp4", ".mkv", ".webm")):
-                    await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-                elif safe_filepath.endswith((".jpg", ".jpeg", ".png")):
-                    await context.bot.send_photo(chat_id=chat_id, photo=open(safe_filepath, "rb"))
+                await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
                 os.remove(safe_filepath)
-                await update.message.reply_text("Download completed! Send another link.")
+                await update.message.reply_text("✅ Download completed! Send another link.")
             else:
-                await update.message.reply_text("Error: File not found!")
+                await update.message.reply_text("❌ Error: File not found!")
+
     except yt_dlp.DownloadError as e:
-        await update.message.reply_text(f"Download Error: {str(e)}")
+        await update.message.reply_text(f"❌ Download Error: {str(e)}")
     except Exception as e:
-        await update.message.reply_text(f"Unexpected Error: {str(e)}")
+        await update.message.reply_text(f"⚠️ Unexpected Error: {str(e)}")
+
     return ConversationHandler.END
+
 
 def main():
     TOKEN = os.getenv("BOT_TOKEN")
