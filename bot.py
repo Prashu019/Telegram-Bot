@@ -2,8 +2,11 @@ import re
 from urllib.parse import urlparse
 import os
 import yt_dlp
-from telegram import Update  # Import Update class
-from telegram.ext import Application, CallbackContext, ConversationHandler, CommandHandler  # Import all required classes
+from telegram import Update
+from telegram.ext import Application, CallbackContext, ConversationHandler, CommandHandler
+
+# Use environment variable for BOT_TOKEN
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Railway injects this from service variables
 
 # Assuming user_choices is a global dictionary defined elsewhere
 user_choices = {}  # Replace with your actual implementation if different
@@ -114,11 +117,12 @@ if __name__ == "__main__":
     # Example bot setup for testing
     import asyncio
 
-    # Replace 'YOUR_TOKEN' with your actual Telegram bot token
-    TOKEN = "BOT_TOKEN"
+    # Check if BOT_TOKEN is set
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN environment variable is not set. Please set it in Railway variables.")
 
-    # Create the Application
-    application = Application.builder().token(TOKEN).build()
+    # Create the Application with BOT_TOKEN from environment
+    application = Application.builder().token(BOT_TOKEN).build()
 
     # For testing purposes, add a basic handler
     async def test_handler(update: Update, context: CallbackContext):
@@ -126,7 +130,7 @@ if __name__ == "__main__":
         user_choices[update.message.chat_id] = {"url": update.message.text}
         await download_media(update, context)
 
-    # Add the CommandHandler correctly
+    # Add the CommandHandler
     application.add_handler(CommandHandler("download", test_handler))
 
     # Run the bot
