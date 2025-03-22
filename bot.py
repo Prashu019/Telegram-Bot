@@ -29,13 +29,28 @@ def is_valid_url(url):
     )
     return bool(re.match(regex, url))
 
+# ✅ Function to check if the URL is downloadable
+def is_downloadable(url):
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return bool(info)
+    except Exception:
+        return False
+
 # ✅ Ask user for video quality
 async def ask_quality(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     url = update.message.text.strip()
 
+    # First, check if it's a valid URL
     if not is_valid_url(url):
-        await update.message.reply_text("❌ Invalid URL! Please send a valid video link.")
+        await update.message.reply_text("❌ Invalid URL! Please send a correct video link.")
+        return ConversationHandler.END
+
+    # Second, check if the URL is downloadable
+    if not is_downloadable(url):
+        await update.message.reply_text("❌ The provided URL cannot be downloaded. Ensure it's a public video!")
         return ConversationHandler.END
 
     user_choices[chat_id] = {"url": url}
@@ -48,7 +63,7 @@ async def ask_quality(update: Update, context: CallbackContext):
 
 # ✅ Download and send video
 async def download_media(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     quality = update.message.text
     url = user_choices.get(chat_id, {}).get("url")
 
@@ -92,8 +107,14 @@ async def download_media(update: Update, context: CallbackContext):
 
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
 
+        # ✅ Ensure file isn't too large for Telegram (50MB limit)
+        if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:
+            await update.message.reply_text("❌ File too large! Try selecting a lower quality.")
+            return ConversationHandler.END
+
         try:
-            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
+            with open(safe_filepath, "rb") as video_file:
+                await context.bot.send_video(chat_id=chat_id, video=video_file)
             await update.message.reply_text("✅ Download completed! Send another link.")
         finally:
             if os.path.exists(safe_filepath):
