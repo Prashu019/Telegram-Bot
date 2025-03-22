@@ -29,14 +29,26 @@ def is_valid_url(url):
     )
     return bool(re.match(regex, url))
 
-# ✅ Function to check if the URL is downloadable
+# ✅ Improved Function to Check if Video is Downloadable
 def is_downloadable(url):
+    """Returns True if the video is downloadable, False otherwise."""
+    options = {
+        "quiet": True,
+        "noplaylist": True,  # Ignore playlists
+        "extract_flat": True,  # Extract metadata only
+    }
+
     try:
-        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
-            return bool(info)
+            if info and "entries" not in info:  # Ensure it's a valid single video
+                return True
+    except yt_dlp.DownloadError:
+        return False  # Video might be private or removed
     except Exception:
-        return False
+        return False  # Any other errors
+
+    return False
 
 # ✅ Ask user for video quality
 async def ask_quality(update: Update, context: CallbackContext):
@@ -50,7 +62,7 @@ async def ask_quality(update: Update, context: CallbackContext):
 
     # Second, check if the URL is downloadable
     if not is_downloadable(url):
-        await update.message.reply_text("❌ The provided URL cannot be downloaded. Ensure it's a public video!")
+        await update.message.reply_text("❌ Could not verify the video. Ensure it's public and try again!")
         return ConversationHandler.END
 
     user_choices[chat_id] = {"url": url}
