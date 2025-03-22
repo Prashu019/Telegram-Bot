@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 # ✅ Ensure 'downloads' directory exists
 if not os.path.exists("downloads"):
     os.makedirs("downloads")
+if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:  # 50MB limit
+    await update.message.reply_text("❌ File too large! Try a lower quality.")
+    return ConversationHandler.END
 
 # ✅ Load Telegram Bot Token from Environment Variables
 TOKEN = os.getenv("BOT_TOKEN")
@@ -31,7 +34,7 @@ def is_valid_url(url):
 
 # ✅ Ask user for video quality
 async def ask_quality(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     url = update.message.text.strip()
 
     if not is_valid_url(url):
@@ -93,7 +96,9 @@ async def download_media(update: Update, context: CallbackContext):
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
 
         try:
-            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
+            with open(safe_filepath, "rb") as video_file:
+                await context.bot.send_video(chat_id=chat_id, video=video_file)
+
             await update.message.reply_text("✅ Download completed! Send another link.")
         finally:
             if os.path.exists(safe_filepath):
