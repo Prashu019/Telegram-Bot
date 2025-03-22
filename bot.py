@@ -3,6 +3,7 @@ import logging
 import yt_dlp
 import re
 import ssl
+import hashlib
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 
@@ -70,11 +71,12 @@ async def download_media(update: Update, context: CallbackContext):
     }
 
     options = {
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'outtmpl': 'downloads/%(id)s.%(ext)s',  # Shorter filename using video ID
         'noplaylist': True,
         'merge_output_format': 'mp4',
         'restrictfilenames': True,
         'format': quality_formats.get(quality, "best"),
+        'sanitize_filename': True  # Ensure safe filenames
     }
 
     # Handle YouTube authentication with cookies
