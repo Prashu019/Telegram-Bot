@@ -3,9 +3,8 @@ import logging
 import yt_dlp
 import re
 import ssl
-import hashlib
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 
 # ✅ Ensure SSL is available
 try:
@@ -44,25 +43,40 @@ async def ask_quality(update: Update, context: CallbackContext):
 
     if not is_valid_url(url):
         await update.message.reply_text("❌ Invalid URL! Please send a valid video link.")
-        return ConversationHandler.END
+        return
 
     user_choices[chat_id] = {"url": url}
 
-    keyboard = [["High", "Medium", "Low"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("📌 Choose video quality:", reply_markup=reply_markup)
+    # Fetch video info
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get("title", "Unknown Title")
+    except Exception as e:
+        await update.message.reply_text(f"⚠ Failed to retrieve video info: {str(e)}")
+        return
 
-    return 1  # Move to next step in conversation
+    keyboard = [
+        [InlineKeyboardButton("High", callback_data=f"{chat_id}:High")],
+        [InlineKeyboardButton("Medium", callback_data=f"{chat_id}:Medium")],
+        [InlineKeyboardButton("Low", callback_data=f"{chat_id}:Low")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(f"🎬 *{title}*\n📌 Choose video quality:", reply_markup=reply_markup, parse_mode="Markdown")
 
 # ✅ Download and send video
 async def download_media(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    quality = update.message.text
+    query = update.callback_query
+    await query.answer()
+    
+    chat_id, quality = query.data.split(":")
+    chat_id = int(chat_id)
     url = user_choices.get(chat_id, {}).get("url")
 
     if not url:
-        await update.message.reply_text("❌ Error: URL not found. Please send a valid link.")
-        return ConversationHandler.END
+        await query.message.reply_text("❌ Error: URL not found. Please send a valid link.")
+        return
 
     quality_formats = {
         "High": "bestvideo[height<=1080]+bestaudio/best",
@@ -79,21 +93,8 @@ async def download_media(update: Update, context: CallbackContext):
         'sanitize_filename': True  # Ensure safe filenames
     }
 
-    # Handle YouTube authentication with cookies
-    if "youtube.com" in url or "youtu.be" in url:
-        cookie_file = "youtube_cookies.txt"
-        if os.path.exists(cookie_file):
-            options["cookiefile"] = cookie_file
-        else:
-            await update.message.reply_text(
-                "⚠ YouTube requires authentication, but no cookie file found. "
-                "Please provide cookies via youtube_cookies.txt. See: "
-                "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
-            )
-            return ConversationHandler.END
-
     try:
-        await update.message.reply_text("📥 Downloading, please wait...")
+        await query.message.reply_text("📥 Downloading, please wait...")
 
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -103,17 +104,15 @@ async def download_media(update: Update, context: CallbackContext):
 
         try:
             await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-            await update.message.reply_text("✅ Download completed! Send another link.")
+            await query.message.reply_text("✅ Download completed! Send another link.")
         finally:
             if os.path.exists(safe_filepath):
                 os.remove(safe_filepath)
 
     except yt_dlp.DownloadError as e:
-        await update.message.reply_text(f"❌ Download Error: {str(e)}")
+        await query.message.reply_text(f"❌ Download Error: {str(e)}")
     except Exception as e:
-        await update.message.reply_text(f"⚠ Unexpected Error: {str(e)}")
-
-    return ConversationHandler.END
+        await query.message.reply_text(f"⚠ Unexpected Error: {str(e)}")
 
 # ✅ Start Command
 async def start(update: Update, context: CallbackContext):
@@ -123,18 +122,10 @@ async def start(update: Update, context: CallbackContext):
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # ✅ Conversation Handler for Step-by-Step Process
-    conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, ask_quality)],
-        states={
-            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_media)],
-        },
-        fallbacks=[],
-    )
-
     # ✅ Command Handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_quality))
+    app.add_handler(CallbackQueryHandler(download_media))
 
     # ✅ Start Bot
     print("🚀 Bot is running...")
