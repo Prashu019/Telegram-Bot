@@ -14,7 +14,7 @@ if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
 # ✅ Load Telegram Bot Token from Environment Variables
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "BOT_TOKEN"
 if not TOKEN:
     raise ValueError("❌ BOT_TOKEN is missing! Set it in Railway environment variables.")
 
