@@ -2,8 +2,15 @@ import os
 import logging
 import yt_dlp
 import re
+import ssl
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+
+# ✅ Ensure SSL is available
+try:
+    ssl.create_default_context()
+except ImportError:
+    raise ImportError("❌ SSL module is missing! Ensure your Python installation includes SSL support.")
 
 # ✅ Logging Setup
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
