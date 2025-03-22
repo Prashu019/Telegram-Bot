@@ -29,11 +29,10 @@ def is_valid_url(url):
     )
     return bool(re.match(regex, url))
 
-# ✅ Improved Function to Check if Video is Downloadable
 def is_downloadable(url):
     """Returns True if the video is downloadable, False otherwise."""
     options = {
-        "quiet": True,
+        "quiet": False,  # Show errors in logs
         "noplaylist": True,  # Ignore playlists
         "extract_flat": True,  # Extract metadata only
     }
@@ -41,14 +40,19 @@ def is_downloadable(url):
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
+            logger.info(f"🔍 Extracted Info: {info}")  # ✅ Debugging: Log extracted data
+
             if info and "entries" not in info:  # Ensure it's a valid single video
                 return True
-    except yt_dlp.DownloadError:
-        return False  # Video might be private or removed
-    except Exception:
-        return False  # Any other errors
+            else:
+                logger.warning("⚠️ Video info not valid. It may be private or age-restricted.")
+    except yt_dlp.DownloadError as e:
+        logger.error(f"❌ yt-dlp DownloadError: {str(e)}")
+    except Exception as e:
+        logger.error(f"⚠️ Unexpected Error in is_downloadable: {str(e)}")
 
     return False
+
 
 # ✅ Ask user for video quality
 async def ask_quality(update: Update, context: CallbackContext):
