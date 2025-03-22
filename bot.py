@@ -7,14 +7,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # ✅ Logging Setup
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(_name_)
 
 # ✅ Ensure 'downloads' directory exists
 if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
 # ✅ Load Telegram Bot Token from Environment Variables
-TOKEN = "BOT_TOKEN"
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ BOT_TOKEN is missing! Set it in Railway environment variables.")
 
@@ -29,44 +29,13 @@ def is_valid_url(url):
     )
     return bool(re.match(regex, url))
 
-def is_downloadable(url):
-    """Returns True if the video is downloadable, False otherwise."""
-    options = {
-        "quiet": False,  # Show errors in logs
-        "noplaylist": True,  # Ignore playlists
-        "extract_flat": True,  # Extract metadata only
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=False)
-            logger.info(f"🔍 Extracted Info: {info}")  # ✅ Debugging: Log extracted data
-
-            if info and "entries" not in info:  # Ensure it's a valid single video
-                return True
-            else:
-                logger.warning("⚠️ Video info not valid. It may be private or age-restricted.")
-    except yt_dlp.DownloadError as e:
-        logger.error(f"❌ yt-dlp DownloadError: {str(e)}")
-    except Exception as e:
-        logger.error(f"⚠️ Unexpected Error in is_downloadable: {str(e)}")
-
-    return False
-
-
 # ✅ Ask user for video quality
 async def ask_quality(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
+    chat_id = update.message.chat_id
     url = update.message.text.strip()
 
-    # First, check if it's a valid URL
     if not is_valid_url(url):
-        await update.message.reply_text("❌ Invalid URL! Please send a correct video link.")
-        return ConversationHandler.END
-
-    # Second, check if the URL is downloadable
-    if not is_downloadable(url):
-        await update.message.reply_text("❌ Could not verify the video. Ensure it's public and try again!")
+        await update.message.reply_text("❌ Invalid URL! Please send a valid video link.")
         return ConversationHandler.END
 
     user_choices[chat_id] = {"url": url}
@@ -79,7 +48,7 @@ async def ask_quality(update: Update, context: CallbackContext):
 
 # ✅ Download and send video
 async def download_media(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
+    chat_id = update.message.chat_id
     quality = update.message.text
     url = user_choices.get(chat_id, {}).get("url")
 
@@ -108,7 +77,7 @@ async def download_media(update: Update, context: CallbackContext):
             options["cookiefile"] = cookie_file
         else:
             await update.message.reply_text(
-                "⚠️ YouTube requires authentication, but no cookie file found. "
+                "⚠ YouTube requires authentication, but no cookie file found. "
                 "Please provide cookies via youtube_cookies.txt. See: "
                 "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
             )
@@ -123,14 +92,8 @@ async def download_media(update: Update, context: CallbackContext):
 
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
 
-        # ✅ Ensure file isn't too large for Telegram (50MB limit)
-        if os.path.getsize(safe_filepath) > 50 * 1024 * 1024:
-            await update.message.reply_text("❌ File too large! Try selecting a lower quality.")
-            return ConversationHandler.END
-
         try:
-            with open(safe_filepath, "rb") as video_file:
-                await context.bot.send_video(chat_id=chat_id, video=video_file)
+            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
             await update.message.reply_text("✅ Download completed! Send another link.")
         finally:
             if os.path.exists(safe_filepath):
@@ -139,7 +102,7 @@ async def download_media(update: Update, context: CallbackContext):
     except yt_dlp.DownloadError as e:
         await update.message.reply_text(f"❌ Download Error: {str(e)}")
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Unexpected Error: {str(e)}")
+        await update.message.reply_text(f"⚠ Unexpected Error: {str(e)}")
 
     return ConversationHandler.END
 
@@ -149,9 +112,6 @@ async def start(update: Update, context: CallbackContext):
 
 # ✅ Main Function
 def main():
-    if not TOKEN:
-        raise ValueError("❌ BOT_TOKEN is missing! Set it in Railway environment variables.")
-    
     app = Application.builder().token(TOKEN).build()
 
     # ✅ Conversation Handler for Step-by-Step Process
@@ -171,5 +131,5 @@ def main():
     print("🚀 Bot is running...")
     app.run_polling()
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
