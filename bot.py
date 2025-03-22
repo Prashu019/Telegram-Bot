@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # ✅ Logging Setup
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 # ✅ Ensure 'downloads' directory exists
 if not os.path.exists("downloads"):
@@ -131,5 +131,5 @@ def main():
     print("🚀 Bot is running...")
     app.run_polling()
 
-if __name__ == "_main_":
+if __name__ == "__main__":
     main()
