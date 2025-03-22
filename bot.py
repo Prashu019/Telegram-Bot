@@ -149,7 +149,6 @@ async def start(update: Update, context: CallbackContext):
 
 # ✅ Main Function
 def main():
-    def main():
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN is missing! Set it in Railway environment variables.")
     
