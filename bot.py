@@ -87,7 +87,8 @@ async def download_media(update: Update, context: CallbackContext):
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
         
         async with aiofiles.open(safe_filepath, "rb") as video:
-            await context.bot.send_video(chat_id=chat_id, video=video)
+            video_data = await video.read()
+            await context.bot.send_video(chat_id=chat_id, video=video_data)
         
         await update.message.reply_text("Download completed! Send another link.")
         os.remove(safe_filepath)  # Cleanup after sending
