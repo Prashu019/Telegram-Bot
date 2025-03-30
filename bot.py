@@ -3,48 +3,55 @@ import logging
 import yt_dlp
 import re
 import ssl
-import hashlib
+import aiofiles
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 
+# Ensure SSL support
 try:
     ssl.create_default_context()
 except ImportError:
     raise ImportError("SSL module is missing! Ensure your Python installation includes SSL support.")
 
+# Logging setup
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-if not os.path.exists("downloads"):
-    os.makedirs("downloads")
+# Create downloads directory if not exists
+os.makedirs("downloads", exist_ok=True)
 
+# Bot token setup
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN is missing! Set it in Railway environment variables.")
 
 user_choices = {}
 
-def is_valid_url(url):
-    regex = re.compile(
-        r"^(https?://)?(www\.)?"
-        r"(youtube\.com|youtu\.be|facebook\.com|instagram\.com|twitter\.com|tiktok\.com)/"
-    )
-    return bool(re.match(regex, url))
+# Validate URL
+async def is_valid_url(url):
+    regex = re.compile(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|instagram\.com|twitter\.com|tiktok\.com)/")
+    if not re.match(regex, url):
+        return False
+    
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return "formats" in info  # Ensure video has downloadable formats
+    except yt_dlp.DownloadError:
+        return False
 
 async def ask_quality(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     url = update.message.text.strip()
 
-    if not is_valid_url(url):
-        await update.message.reply_text("Invalid URL! Please send a valid video link.")
+    if not await is_valid_url(url):
+        await update.message.reply_text("Invalid or unsupported URL! Please send a valid video link.")
         return ConversationHandler.END
 
     user_choices[chat_id] = {"url": url}
-
     keyboard = [["High", "Medium", "Low"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Choose video quality:", reply_markup=reply_markup)
-
     return 1
 
 async def download_media(update: Update, context: CallbackContext):
@@ -67,43 +74,34 @@ async def download_media(update: Update, context: CallbackContext):
         'noplaylist': True,
         'merge_output_format': 'mp4',
         'restrictfilenames': True,
-        'format': quality_formats.get(quality, "best"),
-        'sanitize_filename': True
+        'format': quality_formats.get(quality, "best")
     }
-
-    if "youtube.com" in url or "youtu.be" in url:
-        cookie_file = "youtube_cookies.txt"
-        if os.path.exists(cookie_file):
-            options["cookiefile"] = cookie_file
-        else:
-            await update.message.reply_text(
-                "YouTube requires authentication, but no cookie file found. "
-                "Please provide cookies via youtube_cookies.txt. See: "
-                "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
-            )
-            return ConversationHandler.END
 
     try:
         await update.message.reply_text("Downloading, please wait...")
-
+        
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-
+        
         safe_filepath = os.path.join("downloads", os.path.basename(file_path))
-
-        try:
-            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-            await update.message.reply_text("Download completed! Send another link.")
-        finally:
-            if os.path.exists(safe_filepath):
-                os.remove(safe_filepath)
-
+        
+        async with aiofiles.open(safe_filepath, "rb") as video:
+            await context.bot.send_video(chat_id=chat_id, video=video)
+        
+        await update.message.reply_text("Download completed! Send another link.")
+        os.remove(safe_filepath)  # Cleanup after sending
+    
     except yt_dlp.DownloadError as e:
-        await update.message.reply_text(f"Download Error: {str(e)}")
+        if "Signature extraction failed" in str(e):
+            await update.message.reply_text(
+                "YouTube has updated its security, and downloads may not work. Please wait for yt-dlp updates."
+            )
+        else:
+            await update.message.reply_text(f"Download Error: {str(e)}")
     except Exception as e:
         await update.message.reply_text(f"Unexpected Error: {str(e)}")
-
+    
     return ConversationHandler.END
 
 async def start(update: Update, context: CallbackContext):
