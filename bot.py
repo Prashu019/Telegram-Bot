@@ -15,49 +15,44 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ✅ Ensure SSL is available
+# SSL context setup
 try:
     ssl.create_default_context()
 except ImportError:
-    raise ImportError("❌ SSL module is missing! Ensure your Python installation includes SSL support.")
+    raise ImportError("SSL module is missing.")
 
-# ✅ Logging Setup
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Logging setup
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ Ensure 'downloads' directory exists
+# Ensure download directory exists
 if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
-# ✅ Load Telegram Bot Token from Environment Variables
+# Token from environment
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN is missing! Set it in Railway environment variables.")
+    raise ValueError("BOT_TOKEN is missing from environment variables.")
 
-# ✅ Store user links temporarily
+# Store user URLs
 user_choices = {}
 
-# ✅ Validate URL
+# URL validation
 def is_valid_url(url):
-    regex = re.compile(
-        r"^(https?://)?(www\.)?"
-        r"(youtube\.com|youtu\.be|facebook\.com|instagram\.com|twitter\.com|tiktok\.com)/"
-    )
+    regex = re.compile(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|instagram\.com|twitter\.com|tiktok\.com)/")
     return bool(re.match(regex, url))
 
-# ✅ Handle /start command
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Welcome to MediaFetchBot!\nPaste a public video URL to download.")
+    await update.message.reply_text("👋 Welcome! Send me a public video URL to download.", reply_markup=None)
 
-# ✅ Ask user for quality using inline buttons only
+# Ask for quality (inline buttons only)
 async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     url = update.message.text.strip()
 
     if not is_valid_url(url):
-        await update.message.reply_text("❌ Invalid URL! Please send a valid video link.")
+        await update.message.reply_text("❌ Invalid URL. Try again with a proper video link.", reply_markup=None)
         return
 
     user_choices[chat_id] = {"url": url}
@@ -70,7 +65,7 @@ async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("📌 Choose video quality:", reply_markup=reply_markup)
 
-# ✅ Handle button press and download
+# Download handler
 async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -79,7 +74,7 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = user_choices.get(chat_id, {}).get("url")
 
     if not url:
-        await query.edit_message_text("❌ Error: No video URL found. Please send it again.")
+        await query.edit_message_text("❌ No video URL found. Please send it again.")
         return
 
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_VIDEO)
@@ -99,41 +94,40 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'sanitize_filename': True
     }
 
-    # YouTube cookies
     if "youtube.com" in url or "youtu.be" in url:
         cookie_file = "youtube_cookies.txt"
         if os.path.exists(cookie_file):
             options["cookiefile"] = cookie_file
         else:
             await query.edit_message_text(
-                "⚠ YouTube requires authentication, but no cookie file found.\n"
-                "Please upload cookies as youtube_cookies.txt.\n"
-                "See: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
+                "⚠ YouTube requires login cookies.\n"
+                "Please upload a `youtube_cookies.txt` file.\n"
+                "Guide: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
             )
             return
 
     try:
-        await query.edit_message_text("📥 Downloading, please wait...")
+        await query.edit_message_text("📥 Downloading your video...")
 
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
 
-        safe_filepath = os.path.join("downloads", os.path.basename(file_path))
+        safe_path = os.path.join("downloads", os.path.basename(file_path))
 
         try:
-            await context.bot.send_video(chat_id=chat_id, video=open(safe_filepath, "rb"))
-            await context.bot.send_message(chat_id=chat_id, text="✅ Download completed! Send another link.")
+            await context.bot.send_video(chat_id=chat_id, video=open(safe_path, "rb"))
+            await context.bot.send_message(chat_id=chat_id, text="✅ Done! Send another URL.", reply_markup=None)
         finally:
-            if os.path.exists(safe_filepath):
-                os.remove(safe_filepath)
+            if os.path.exists(safe_path):
+                os.remove(safe_path)
 
     except yt_dlp.DownloadError as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Download Error: {str(e)}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {str(e)}", reply_markup=None)
     except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"⚠ Unexpected Error: {str(e)}")
+        await context.bot.send_message(chat_id=chat_id, text=f"⚠ Unexpected error: {str(e)}", reply_markup=None)
 
-# ✅ Main function
+# Main function
 def main():
     app = Application.builder().token(TOKEN).build()
 
@@ -141,7 +135,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_quality))
     app.add_handler(CallbackQueryHandler(download_media))
 
-    print("🚀 Bot is running...")
+    print("🚀 Bot running...")
     app.run_polling()
 
 if __name__ == "__main__":
