@@ -4,7 +4,7 @@ import yt_dlp
 import re
 import ssl
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -44,7 +44,7 @@ def is_valid_url(url):
 
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Welcome! Send me a public video URL to download.", reply_markup=None)
+    await update.message.reply_text("👋 Welcome! Send me a public video URL to download.", reply_markup=ReplyKeyboardRemove())
 
 # Ask for quality (inline buttons only)
 async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,7 +52,7 @@ async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
 
     if not is_valid_url(url):
-        await update.message.reply_text("❌ Invalid URL. Try again with a proper video link.", reply_markup=None)
+        await update.message.reply_text("❌ Invalid URL. Try again with a proper video link.", reply_markup=ReplyKeyboardRemove())
         return
 
     user_choices[chat_id] = {"url": url}
@@ -117,15 +117,15 @@ async def download_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             await context.bot.send_video(chat_id=chat_id, video=open(safe_path, "rb"))
-            await context.bot.send_message(chat_id=chat_id, text="✅ Done! Send another URL.", reply_markup=None)
+            await context.bot.send_message(chat_id=chat_id, text="✅ Done! Send another URL.", reply_markup=ReplyKeyboardRemove())
         finally:
             if os.path.exists(safe_path):
                 os.remove(safe_path)
 
     except yt_dlp.DownloadError as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {str(e)}", reply_markup=None)
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {str(e)}", reply_markup=ReplyKeyboardRemove())
     except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"⚠ Unexpected error: {str(e)}", reply_markup=None)
+        await context.bot.send_message(chat_id=chat_id, text=f"⚠ Unexpected error: {str(e)}", reply_markup=ReplyKeyboardRemove())
 
 # Main function
 def main():
