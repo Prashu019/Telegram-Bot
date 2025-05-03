@@ -51,7 +51,7 @@ def is_valid_url(url):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Welcome to MediaFetchBot!\nPaste a public video URL to download.")
 
-# ✅ Ask user for quality using inline buttons
+# ✅ Ask user for quality using inline buttons only
 async def ask_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     url = update.message.text.strip()
